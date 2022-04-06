@@ -1,0 +1,26 @@
+name: general_json_rpc
+description: >-
+  This package will help you to invoke methods across network using any protocol
+  This package encode and decode your requests and responses to and from bytes So you can send it any where using any protocol
+  This package is implementing json-rpc v2.0
+
+version: 1.0.0
+repository: https://github.com/Davenchy/general_json_rpc.git
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
+environment:
+  sdk: ">=2.16.1 <3.0.0"
+
+dependencies:
+  rxdart: ^0.27.3
+
+dev_dependencies:
+  lints: ^1.0.0
+  test: ^1.16.0
