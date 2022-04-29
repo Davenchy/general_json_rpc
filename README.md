@@ -1,15 +1,11 @@
 # GeneralJsonRpc
 
-This package will help you to invoke methods across network using any protocol
+GeneralJsonRpc is a package that implements json-rpc v2.0 and its purpose is to ease invoking methods and exchange data throw network
 
-This package encode and decode your requests and responses to and from bytes so you can
-send it any where using any protocol
-
-This package is implementing json-rpc v2.0
+the package is focusing on encoding and decoding json-rpc messages to and from bytes
+to ease sending and receiving using any protocol
 
 ## A Quick Guide
-
-Instead of following the guide you can see the final simple code at the [**Shortcuts**](#shortcuts) section below.
 
 In this guide you will create a server and client sides application that invokes methods throw
 tcp sockets
@@ -24,6 +20,104 @@ lets start
   
   - The `quit` method will end the application by executing `exit(0);`
 
+```dart
+import 'dart:io';
+import 'package:general_json_rpc/general_json_rpc.dart';
+
+void main() {
+  server();
+  client();
+}
+```
+
+```dart
+final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
+  print('[server] Server is running on port 8081');
+
+  // create MethodRunner to define the rpc methods
+  final runner = MethodRunner();
+
+  // now lets define the 3 methods
+  runner.register<int>('sum', (numbers) => numbers.reduce((a, b) => a + b));
+  runner.register<void>('print', (p) => print(p['message']));
+  runner.register<void>('quit', (_) => exit(0));
+
+  // now lets listen for new clients
+  await for (final Socket client in server) {
+    print('[server] new client');
+    client.listen(
+      (bytes) async {
+        // converts bytes into [RpcObject]
+        final rpcObject = RpcObject.decode(bytes);
+
+        // now lets handle all cases
+        final response = await RpcObject.auto(rpcObject, methodRunner: runner);
+
+        // now lets send the response to the client if it is not null
+        // before send we must convert it to bytes using the `encode()` method
+        if (response != null) client.add(response.encode());
+      },
+    );
+  }
+```
+
+```dart
+void client() async {
+  print('[client] connecting...');
+  final client = await Socket.connect(InternetAddress.loopbackIPv4, 8081);
+  print('[client] connected!');
+
+  // lets create controller to help send requests and responses
+  final controller = RpcController();
+
+  // lets listen for messages
+  client.listen(
+    (bytes) async {
+      // lets use our controller to send requests and responses
+      controller.sendEvent.addListener(
+        // ! encode [rpcMessage] before send
+        (rpcMessage) => client.add(rpcMessage.encode()),
+      );
+
+      // convert bytes into [RpcObject]
+      final rpcObject = RpcObject.decode(bytes);
+
+      // now lets handle the rpcObject
+      RpcObject.auto(rpcObject, controller: controller);
+    },
+  );
+
+  // now lets first request the `sum` method
+  // we will pass 3 numbers 1, 2, 3 in a list
+  // the sum will return as Future<int>
+  // we can handle errors by listening for [RpcError]
+  controller.request<int>('sum', [1, 2, 3]).then((result) {
+    print('[client] sum result: $result');
+  }).onError<RpcError>((error, _) {
+    print('[client] error: ${error.message}');
+  });
+
+  // ============================= //
+  // now lets call the `print` method without expecting a response
+  controller.notify(
+    'print',
+    {
+      'message': 'A message to be printed on the server side by the client',
+    },
+  );
+
+  // ============================= //
+  // now lets shutdown the server by calling the `quit` method after 5 seconds
+  // we expect no returned value
+  // so we will send a rpc notification
+  await Future.delayed(
+    const Duration(seconds: 5),
+    () => controller.notify('quit'),
+  );
+}
+```
+
+<!-- 
 ### Server side
 
 Now lets start
@@ -370,95 +464,4 @@ request.waitForResponse().then((result) {
   }).onError<RpcError>((error, _) {
     print('[client] error: ${error.message}');
   });
-```
-
-### Shortcuts
-
-This is a lot of code now lets clean and make it simple
-
-```dart
-import 'dart:io';
-import 'package:general_json_rpc/general_json_rpc.dart';
-
-void main() {
-  server();
-  client();
-}
-```
-
-```dart
-void server() async {
-  var server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
-  print('[server] Server is running on port 8081');
-
-  // create MethodRunner to define the rpc methods
-  final runner = MethodRunner();
-
-  // now lets define the 3 methods
-  runner.register<int>('sum', (numbers) => numbers.reduce((a, b) => a + b));
-  runner.register<void>('print', (p) => print(p['message']));
-  runner.register<void>('quit', (_) => exit(0));
-
-  // now lets listen for new clients
-  await for (final Socket client in server) {
-    print('[server] new client');
-    client.listen(
-      (bytes) async {
-        // converts bytes into [RpcObject]
-        final rpcObject = RpcObject.decode(bytes);
-
-        // The `auto` method handles every thing for you
-        // Will handle request using [runner] and responses using [RpcResponseManager.global]
-        final response = await RpcObject.auto(rpcObject, methodRunner: runner);
-
-        // now lets send the response to the client if it is not null
-        // before send we must convert it to bytes using the `encode()` method
-        if (response != null) client.add(response.encode());
-      },
-    );
-  }
-}
-```
-
-```dart
-void client() async {
-  print('[client] connecting...');
-  final client = await Socket.connect(InternetAddress.loopbackIPv4, 8081);
-  print('[client] connected!');
-
-  // lets listen for data from the server
-  client.listen(
-    (bytes) async {
-      // converts bytes into [RpcObject]
-      final rpcObject = RpcObject.decode(bytes);
-
-      // The `auto` method handles every thing for you
-      // ! Only will handle responses using [RpcResponseManager.global]
-      RpcObject.auto(rpcObject);
-
-      // we are not going to send any thing back
-      // ! so we do not need to add the next line
-      // if (response != null) client.add(response.encode());
-    },
-  );
-
-  // ============================= //
-  final request2 = RpcRequest.notify('print', {});
-
-  request2['message'] =
-      'A message to be printed on the server side by the client';
-
-  client.add(request2.encode());
-
-  // ============================= //
-  final request = RpcRequest.create('sum', [1, 2, 3]);
-  client.add(request.encode());
-
-  // now lets register the request to be notified on its result
-  final sum = await request.waitForResponse();
-  print('[client] sum result: $sum');
-
-  // ============================= //
-  client.add(RpcRequest.notify('quit').encode());
-}
-```
+``` -->

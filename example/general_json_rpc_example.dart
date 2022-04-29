@@ -25,7 +25,7 @@ void main() {
 }
 
 void server() async {
-  var server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
+  final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
   print('[server] Server is running on port 8081');
 
   // create MethodRunner to define the rpc methods
@@ -103,5 +103,8 @@ void client() async {
   // now lets shutdown the server by calling the `quit` method after 5 seconds
   // we expect no returned value
   // so we will send a rpc notification
-  Future.delayed(const Duration(seconds: 5), () => controller.notify('quit'));
+  await Future.delayed(
+    const Duration(seconds: 5),
+    () => controller.notify('quit'),
+  );
 }
