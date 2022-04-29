@@ -40,7 +40,11 @@ final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
   // now lets define the 3 methods
   runner.register<int>('sum', (numbers) => numbers.reduce((a, b) => a + b));
   runner.register<void>('print', (p) => print(p['message']));
-  runner.register<void>('quit', (_) => exit(0));
+  
+  runner.register('quit', (_) {
+    print('[server] Quit');
+    exit(0);
+  });
 
   // now lets listen for new clients
   await for (final Socket client in server) {
@@ -70,15 +74,15 @@ void client() async {
   // lets create controller to help send requests and responses
   final controller = RpcController();
 
+  // lets use our controller to send requests and responses
+  controller.sendEvent.addListener(
+    // ! encode [rpcMessage] before send
+    (rpcMessage) => client.add(rpcMessage.encode()),
+  );
+
   // lets listen for messages
   client.listen(
     (bytes) async {
-      // lets use our controller to send requests and responses
-      controller.sendEvent.addListener(
-        // ! encode [rpcMessage] before send
-        (rpcMessage) => client.add(rpcMessage.encode()),
-      );
-
       // convert bytes into [RpcObject]
       final rpcObject = RpcObject.decode(bytes);
 

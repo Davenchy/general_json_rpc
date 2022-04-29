@@ -10,3 +10,7 @@
 - Remove __RpcResponseManager__ now responses handled automatically.
 - Update examples.
 - Update __README.md__.
+
+## 1.1.1
+
+- Correct example code

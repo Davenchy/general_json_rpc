@@ -3,7 +3,7 @@ description: >-
   This package implements json-rpc v2.0 across any protocol.
   It is intended to be used as a general-purpose json-rpc implementation.
 
-version: 1.1.0
+version: 1.1.1
 repository: https://github.com/Davenchy/general_json_rpc.git
 
 platforms:
@@ -22,4 +22,3 @@ dependencies:
 
 dev_dependencies:
   lints: ^1.0.0
-  test: ^1.16.0
