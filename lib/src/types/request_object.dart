@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import '../rpc_response_manager.dart';
 import 'error_object.dart';
 import 'rpc_object.dart';
 import 'rpc_object_type.dart';
@@ -66,11 +65,10 @@ class RpcRequest extends RpcObjectType {
     return RpcResponse(id: id, result: result, error: error);
   }
 
-  /// A shortcut to request a [method] with [params] and wait for its result of type [T]
+  /// A shortcut to wait for response
   ///
-  /// By default [responseManager] is null and will be set to [RpcResponseManager.global]
-  Future<T> waitForResponse<T>([RpcResponseManager? responseManager]) =>
-      (responseManager ?? RpcResponseManager.global).waitForResponse<T>(this);
+  /// alias for `RpcObject.registerRequest<T>(request)`
+  Future<T> waitForResponse<T>() => RpcObject.registerRequest<T>(this);
 
   /// This function is used to detect if this request is a notification or not
   ///
