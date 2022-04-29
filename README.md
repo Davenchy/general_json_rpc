@@ -31,7 +31,8 @@ void main() {
 ```
 
 ```dart
-final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
+void server() async {
+  final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
   print('[server] Server is running on port 8081');
 
   // create MethodRunner to define the rpc methods
@@ -40,7 +41,7 @@ final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
   // now lets define the 3 methods
   runner.register<int>('sum', (numbers) => numbers.reduce((a, b) => a + b));
   runner.register<void>('print', (p) => print(p['message']));
-  
+
   runner.register('quit', (_) {
     print('[server] Quit');
     exit(0);
@@ -63,6 +64,7 @@ final server = await ServerSocket.bind(InternetAddress.anyIPv4, 8081);
       },
     );
   }
+}
 ```
 
 ```dart
