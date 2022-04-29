@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../method_runner.dart';
 import '../extensions.dart';
-import '../rpc_response_manager.dart';
+import '../rpc_controller.dart';
 import 'batch_object.dart';
 import 'error_object.dart';
 import 'request_object.dart';
 import 'response_object.dart';
 import 'rpc_object_type.dart';
+
+import 'package:event_object/event_object.dart';
 
 typedef RpcMeta = Map<String, dynamic>;
 
@@ -22,6 +25,44 @@ typedef ResponseErrorHandler = void Function(dynamic id, RpcError error);
 abstract class RpcObject {
   const RpcObject();
 
+  /// this event used to handle incoming responses
+  static final responseEvent = Event<RpcResponse>(
+    name: 'response_event',
+    historyLimit: 0,
+  );
+
+  /// creates [RpcObject] from [Map] or [List] of [Map]
+  ///
+  /// [Map] is used to create [RpcRequest] or [RpcResponse]
+  ///
+  /// [List] is used to create [RpcBatch] which a list of [RpcRequest] and [RpcResponse]
+  ///
+  /// throws [Exception] if [rpcObject] is not a [Map] or [List]
+  ///
+  /// throws [RpcError] with code [RpcError.kInvalidRequest] if failed to create object
+  factory RpcObject.fromMeta(dynamic meta) {
+    assert(meta is Map || meta is List, 'meta must be Map or List');
+
+    if (meta is Map && meta['jsonrpc'] == '2.0') {
+      if (meta.containsKey('method')) {
+        return RpcRequest.fromMeta(meta.cast<String, dynamic>());
+      } else {
+        return RpcResponse.fromMeta(meta.cast<String, dynamic>());
+      }
+    } else if (meta is List) {
+      return RpcBatch.fromMeta(meta.cast<Map<String, dynamic>>());
+    } else {
+      throw RpcError(
+        code: RpcError.kInvalidRequest,
+        message: 'Invalid Request',
+        data: {
+          'error': 'Invalid jsonrpc',
+          'data': meta,
+        },
+      );
+    }
+  }
+
   /// Returns [RpcBatch] if decoded [bytes] is a [List]
   ///
   /// Returns [RpcResponse] or [RpcResponse] if decoded [bytes] is a [Map]
@@ -33,23 +74,11 @@ abstract class RpcObject {
     utf8.decode(bytes).split(separator).where((str) => str.isNotEmpty).forEach(
       (str) {
         final meta = jsonDecode(str);
-
-        if (meta is Map) {
-          batch.add(RpcObjectType.fromMeta(meta.cast<String, dynamic>()));
-        } else if (meta is List) {
-          batch.addAll(meta
-              .cast<RpcMeta>()
-              .map((meta) => RpcObjectType.fromMeta(meta))
-              .toList());
+        final object = RpcObject.fromMeta(meta);
+        if (object is RpcBatch) {
+          batch.addAll(object.rpcTypes);
         } else {
-          throw RpcError(
-            code: RpcError.kInvalidRequest,
-            message: 'Invalid Request',
-            data: {
-              'error':
-                  'Expected a List or Map but got ${meta.runtimeType.toString()}',
-            },
-          );
+          batch.add(object as RpcObjectType);
         }
       },
     );
@@ -119,18 +148,41 @@ abstract class RpcObject {
     }
   }
 
-  /// Will automatically handle [RpcObject] and return [RpcResponse] if exist
+  /// Will automatically handle [RpcObject] and return [RpcResponse] if exists
   ///
-  /// It uses [RpcResponseManager.global] by default to handle responses
+  /// it handles requests using [methodRunner] and auto send response using [controller]
   static Future<RpcObject?> auto(
     RpcObject rpcObject, {
     MethodRunner? methodRunner,
-    RpcResponseManager? responseManager,
-  }) =>
-      handle(
-        rpcObject,
-        onRequestAll: methodRunner?.executeRequest,
-        onResponse:
-            (responseManager ?? RpcResponseManager.global).handleResponse,
-      );
+    RpcController? controller,
+  }) async {
+    final response = await handle(
+      rpcObject,
+      onRequestAll: methodRunner?.executeRequest,
+      onResponse: (response) => responseEvent.fire(response),
+    );
+    if (response != null && controller != null) {
+      controller.sendRpcObject(response);
+    }
+    return response;
+  }
+
+  /// register request and wait for its response
+  ///
+  /// if response is error throws [RpcError]
+  ///
+  /// else returns result of type [T] if no result returns [Null]
+  static Future<T> registerRequest<T>(RpcRequest request) async {
+    final completer = Completer<T>();
+    final killer = responseEvent.addListener((response) {
+      if (response.id == request.id) {
+        if (response.hasError) {
+          completer.completeError(response.error!);
+        } else {
+          completer.complete(response.result);
+        }
+      }
+    });
+    return completer.future.whenComplete(killer);
+  }
 }

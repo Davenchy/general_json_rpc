@@ -51,11 +51,13 @@ class RpcResponse extends RpcObjectType {
     if (hasError) onError?.call(id, error!);
   }
 
+  /// get result value by its [key], if no results returns [Null]
   dynamic operator [](dynamic key) {
     if (result == null || (result != List && result != Map)) return null;
     return result[key];
   }
 
+  /// sets result value by its [key] if response contains result object
   void operator []=(dynamic key, dynamic value) {
     if (result == null || (result != List && result != Map)) return;
     result[key] = value;

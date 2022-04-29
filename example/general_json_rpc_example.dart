@@ -44,17 +44,8 @@ void server() async {
         // converts bytes into [RpcObject]
         final rpcObject = RpcObject.decode(bytes);
 
-        // now lets handle different cases
-        // we will handle requests and notifications
-        // requests has a return value while notifications has not
-        // we will handle both using [onRequestAll] parameter
-        // we will use runner.executeRequest as a callback
-        // handle will return a Future of nullable [RpcObject] which is the response
-        // for the current request if it has
-        final response = await RpcObject.handle(
-          rpcObject,
-          onRequestAll: runner.executeRequest,
-        );
+        // now lets handle all cases
+        final response = await RpcObject.auto(rpcObject, methodRunner: runner);
 
         // now lets send the response to the client if it is not null
         // before send we must convert it to bytes using the `encode()` method
@@ -69,66 +60,48 @@ void client() async {
   final client = await Socket.connect(InternetAddress.loopbackIPv4, 8081);
   print('[client] connected!');
 
-  // lets listen for data from the server
+  // lets create controller to help send requests and responses
+  final controller = RpcController();
+
+  // lets listen for messages
   client.listen(
     (bytes) async {
-      // converts bytes into [RpcObject]
-      final rpcObject = RpcObject.decode(bytes);
-
-      // now lets handle the server response
-      // server could work fine and returns  a [RpcResponse] containing the result
-      // or fail and returns a [RpcResponse] containing error of type [RpcError]
-      // so lets handle both cases by using [onResponse] parameter
-      // ! also we do not need the [onRequestAll] since we know that the server not sending any requests
-      // by using [RpcResponseManager.global.handleResponse] as reference callback for [onResponse]
-      // it will notify you when ever any result or error is received
-      RpcObject.handle(
-        rpcObject,
-        onResponse: RpcResponseManager.global.handleResponse,
+      // lets use our controller to send requests and responses
+      controller.sendEvent.addListener(
+        // ! encode [rpcMessage] before send
+        (rpcMessage) => client.add(rpcMessage.encode()),
       );
 
-      // we are not going to send any thing back
-      // ! so we do not need to add the next line
-      // if (response != null) client.add(response.encode());
+      // convert bytes into [RpcObject]
+      final rpcObject = RpcObject.decode(bytes);
+
+      // now lets handle the rpcObject
+      RpcObject.auto(rpcObject, controller: controller);
     },
   );
 
   // now lets first request the `sum` method
-  // we expect a returned value
-  // so we will send a rpc request
   // we will pass 3 numbers 1, 2, 3 in a list
-  final request = RpcRequest.create('sum', [1, 2, 3]);
-
-  // now lets send the request to the server
-  // first encode it using the `encode()` method then send it
-  client.add(request.encode());
-
-  // now lets register the request to be notified on its result
-  request.waitForResponse().then((result) {
+  // the sum will return as Future<int>
+  // we can handle errors by listening for [RpcError]
+  controller.request<int>('sum', [1, 2, 3]).then((result) {
     print('[client] sum result: $result');
   }).onError<RpcError>((error, _) {
     print('[client] error: ${error.message}');
   });
 
   // ============================= //
-  // now lets call the `print` method
-  // we expect no returned value
-  // so we will send a rpc notification
-  final request2 = RpcRequest.notify('print', {});
-
-  // I created the param as an empty Map
-  // to show you how to add extra parameters to the request
-  // I am going to define key `message` and add my message to it
-  request2['message'] =
-      'A message to be printed on the server side by the client';
-
-  // now lets encode and send the notification request
-  client.add(request2.encode());
+  // now lets call the `print` method without expecting a response
+  controller.notify(
+    'print',
+    {
+      'message': 'A message to be printed on the server side by the client',
+    },
+  );
 
   // ============================= //
-  // now lets shutdown the server by calling the `quit` method
+  // now lets shutdown the server by calling the `quit` method after 5 seconds
   // we expect no returned value
   // so we will send a rpc notification
-  // ! comment the next line to prevent app from closing
-  // client.add(RpcRequest.notify('quit').encode());
+  Future.delayed(const Duration(seconds: 5), () => controller.notify('quit'));
 }
